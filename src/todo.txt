@@ -1,0 +1,39 @@
+Store:
+
+Client cannot connect or send data to all R Dstores
+o No further action, the state of the file in the index will remain “store in
+progress”; future rebalances will try to sort things out by ensuring the file is
+replicated to R Dstores
+• If the Controller does not receive all the acks (e.g., because the timeout expires),
+the STORE_COMPLETE message should not be sent to the Client, and filename
+should be removed from the index
+
+
+Load:
+
+don't know if need to add file doesn't exist and not enough dstores error handling to reload too
+
+• If Dstore does not have the requested file
+o Simply close the socket with the Client
+Need to add this to dstores
+
+Very importantly need dstores to be able to serve many clients at once
+
+
+Remove:
+
+from index all dstore ports are removed if remove was successful but if not none are removed,
+this is bad because some actually did remove it so is there was a load then the client would be
+asking to load from a dstore that doesn't have it. so need to fix, currently trying to do it gives
+concurrent modification exception.
+
+• Controller cannot connect to some Dstore, or does not receive all the ACKs within
+the timeout
+o No further action, the state of the file in the index will remain "remove in
+progress"; future rebalances will try to sort things out by ensuring that no
+Dstore stores that file
+
+List:
+
+currently only showing files that have status "store complete". need to check this is correct,
+i assume it is.
