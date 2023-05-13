@@ -153,11 +153,11 @@ public class ClientMain {
 
 	//		try { client.store(fileList[0]); } catch(IOException e) { e.printStackTrace(); }
 
-		//		try { client.store(fileList[1]); } catch(IOException e) { e.printStackTrace(); }
+	//			try { client.store(fileList[1]); } catch(IOException e) { e.printStackTrace(); }
 //
-		//							try { client.store(fileList[2]); } catch(IOException e) { e.printStackTrace(); }
+	//								try { client.store(fileList[2]); } catch(IOException e) { e.printStackTrace(); }
 //
-	//							try { client.store(fileList[3]); } catch(IOException e) { e.printStackTrace(); }
+								try { client.store(fileList[3]); } catch(IOException e) { e.printStackTrace(); }
 
 			//sleep for 100 seconds
 		//	try {
@@ -173,7 +173,10 @@ public class ClientMain {
 
 		//	try { client.load("hello.txt", downloadFolder); } catch(IOException e) { e.printStackTrace(); }
 
-	//		try { client.remove("hello.txt"); } catch(IOException e) { e.printStackTrace(); }
+	//		try { client.remove("ccc.txt"); } catch(IOException e) { e.printStackTrace(); }
+
+	//		try { client.remove("aaa.txt"); } catch(IOException e) { e.printStackTrace(); }
+	//		try { client.remove("bbb.txt"); } catch(IOException e) { e.printStackTrace(); }
 
 		try { client.list(); } catch(IOException e) { e.printStackTrace(); }
 

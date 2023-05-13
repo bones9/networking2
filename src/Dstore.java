@@ -408,7 +408,7 @@ public class Dstore {
 
 
 
-    String[] output = new String[2];
+
 
     //split the message into individual parts by spaces
     String[] parts = message.split(" ");

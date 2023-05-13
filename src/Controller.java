@@ -13,6 +13,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
@@ -49,6 +50,30 @@ public class Controller {
   //clients will add their requests here. The controller will take requests from here and process them
   private LinkedBlockingQueue<Request> requestQueue = new LinkedBlockingQueue<>();
 
+  private AtomicInteger operationsInProgress = new AtomicInteger(0);
+
+  public void incrementOperationsInProgress() {
+      operationsInProgress.incrementAndGet();
+  }
+
+    public void decrementOperationsInProgress() {
+        operationsInProgress.decrementAndGet();
+    }
+
+    private AtomicBoolean rebalanceInProgress = new AtomicBoolean(false);
+
+
+  private  ScheduledExecutorService rebalanceExecutor;
+
+  public void startRebalanceExecutor() {
+      rebalanceExecutor = Executors.newSingleThreadScheduledExecutor();
+      rebalanceExecutor.scheduleAtFixedRate(this::rebalance, rebalance_Period, rebalance_Period, TimeUnit.SECONDS);
+  }
+
+  public void stopRebalanceExecutor() {
+      rebalanceExecutor.shutdown();
+  }
+
   public static void main(String[] args) {
 
     //set up the logger
@@ -73,6 +98,9 @@ public class Controller {
 
     //start listener to check for whether it can serve requests from the requestQueue
     controller.startProcessingRequests();
+
+    //start the rebalance executor
+    controller.startRebalanceExecutor();
 
 /*    //just testing whether dstores and clients are joining and the info being updated
     for (int i = 0; i < 30; i++) {
@@ -124,6 +152,11 @@ public class Controller {
                 DstoreInfo dstoreInfo = new DstoreInfo(socket, socket.getPort(), portNum, in,
                     out); //add relevent information to a dstoreInfo
                 addDstoreInfo(dstoreInfo); //add the dstoreInfo to the arraylist of dstoreInfos
+                if (dstoreInfos.size() > R) {  //only rebalance if there are more than R dstores
+                  stopRebalanceExecutor(); //stop the rebalance executor
+                  rebalance(); //a dstore has joined so rebalance
+                  startRebalanceExecutor();  //start the rebalance executor again after rebalancing
+                }
               } else { // a clint is joining
                 logger.info("This initial message was received from a client and was a request");
                 ClientInfo clientInfo = new ClientInfo(socket, socket.getPort(), in, out); //adding relevant info to ClientInfo object
@@ -215,6 +248,8 @@ public class Controller {
 
   public void loadOperation(String fileName,ClientInfo clientInfo) {
 
+  //  incrementOperationsInProgress();
+
     BufferedReader inClient = clientInfo.getInClientBufferedReader();
     PrintWriter outClient = clientInfo.getOutClientPrintWriter();
 
@@ -249,6 +284,8 @@ public class Controller {
 
     outClient.println(Protocol.LOAD_FROM_TOKEN + " " + dstorePortToTry +  " " + fileSize);
     outClient.flush();
+
+   // decrementOperationsInProgress();
 
   }
 
@@ -310,6 +347,8 @@ public class Controller {
 
   //parameters include the name of the file, the size of the file, the input stream from the client and the output stream to the client
   public void storeOperation(String fileName, long fileSize, BufferedReader inClient, PrintWriter outClient){
+
+    incrementOperationsInProgress();
 
     //failure handling if the number of Dstores is less than R
     if (dstoreInfos.size() < R){
@@ -394,12 +433,15 @@ public class Controller {
     //      DstoreInfo dstoreInfo = getSpecificDstoreInfo("Dstore" + String.valueOf(dstorePort));
    //       dstoreInfo.removeFileNameFromStoredFiles(fileName);
     //    }
+        decrementOperationsInProgress();
       }
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
 
     printAllInformationAboutIndex();
+
+    decrementOperationsInProgress();
   }
 
   //chooses R dstores ports where to store the file based on the number of files already stored in each dstore. Choses R dstores with the least number of files stored
@@ -503,6 +545,9 @@ public class Controller {
 */
 
   public void removeOperation(String fileName, ClientInfo clientInfo) {
+
+    incrementOperationsInProgress();
+
     PrintWriter outClient = clientInfo.getOutClientPrintWriter();
 
     //failure handling if the file does not exist in the index
@@ -595,10 +640,13 @@ public class Controller {
       } else {
         // If not completed within the timeout, the operation will be canceled by the scheduled task
         logger.info("Failed to receive all ACKs before timeout");
+        decrementOperationsInProgress();
       }
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
+
+    decrementOperationsInProgress();
   }
 
 
@@ -626,7 +674,7 @@ public class Controller {
     outClient.println(Protocol.LIST_TOKEN + " " + list);
     outClient.flush();
 
-    rebalance();
+    //rebalance();
 
   }
 
@@ -1085,7 +1133,7 @@ public class Controller {
 
 
   }
-
+/*
   public void rebalance(){
 
     dstoreListOPeration();  //reviseAllocation and constructRebalanceMessages are called in here and it now sends them too
@@ -1096,41 +1144,46 @@ public class Controller {
     printAllInformationAboutIndex();
 
 
-  }
-
-/*  //rebalance with timeout
-  public void rebalance() {
-    ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
-
-    // Create a flag to indicate whether the timeout has occurred
-    AtomicBoolean timeoutOccurred = new AtomicBoolean(false);
-
-    // Create a Runnable that will cancel the operation
-    Runnable cancelTask = () -> {
-      logger.info("Operation timeout reached: " + timeout + " milliseconds");
-      // Set the flag to true to indicate that the timeout has occurred
-      timeoutOccurred.set(true);
-    };
-
-    // Schedule the cancellation task to run after the specified timeout
-    executorService.schedule(cancelTask, timeout, TimeUnit.MILLISECONDS);
-
-    // Check the flag before proceeding with the rest of the operation
-    if (timeoutOccurred.get()) {
-      logger.info("Rebalance operation timed out. Exiting.");
-      executorService.shutdown();
-      return;
-    }
-
-    // Perform the rebalance operation
-    dstoreListOPeration();
-    sendRebalanceMessages();
-    syncIndexWithDstoreInfos();
-    printAllInformationAboutIndex();
-
-    // Shutdown the executor
-    executorService.shutdown();
   }*/
+
+ //rebalance with timeout
+ public void rebalance(){
+   // Wait until all operations are completed
+   while (operationsInProgress.get() > 0 || (rebalanceInProgress.get() == true)) {
+     try {
+       logger.info("Waiting for operations to complete before rebalance");
+       Thread.sleep(10); // Wait for 10 milliseconds
+     } catch (InterruptedException e) {
+       // Ignore interrupts
+     }
+   }
+
+
+   rebalanceInProgress.set(true);
+   logger.info("Rebalance started");
+
+   Timer timer = new Timer();
+   timer.schedule(new TimerTask() {
+     @Override
+     public void run() {
+       logger.info("Rebalance timed out");
+       rebalanceInProgress.set(false);
+       return; // timeout reached, return from the method
+     }
+   }, timeout);
+
+   dstoreListOPeration(); //reviseAllocation and constructRebalanceMessages are called in here and it now sends them too
+
+   //sendRebalanceMessages();
+
+   //need to sync the index with what the dstores now have
+   syncIndexWithDstoreInfos();
+   printAllInformationAboutIndex();
+
+    rebalanceInProgress.set(false);
+   timer.cancel(); // cancel the timer after the rebalance is completed
+    logger.info("Rebalance completed");
+ }
 
   public void syncIndexWithDstoreInfos(){
 
