@@ -37,3 +37,6 @@ List:
 
 currently only showing files that have status "store complete". need to check this is correct,
 i assume it is.
+
+javac -cp client.jar ClientMain.java
+java -cp client.jar;. ClientMain 12345 1000

@@ -102,20 +102,7 @@ public class Controller {
     //start the rebalance executor
     controller.startRebalanceExecutor();
 
-/*    //just testing whether dstores and clients are joining and the info being updated
-    for (int i = 0; i < 30; i++) {
-      try {
-        Thread.sleep(10000);
-        System.out.println("*********");
-        controller.printDstoreInfos();
-        controller.sendMessageToAllDstores("Hello Dstore");
-        System.out.println("@@@@@@@@@");
-        controller.printClientInfos();
-        System.out.println("*********");
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-    }*/
+
 
   }
 
@@ -153,6 +140,7 @@ public class Controller {
                     out); //add relevent information to a dstoreInfo
                 addDstoreInfo(dstoreInfo); //add the dstoreInfo to the arraylist of dstoreInfos
                 if (dstoreInfos.size() > R) {  //only rebalance if there are more than R dstores
+                  logger.info("A dstore has joined and there are more than R , there are " + dstoreInfos.size() + " dstores so rebalancing");
                   stopRebalanceExecutor(); //stop the rebalance executor
                   rebalance(); //a dstore has joined so rebalance
                   startRebalanceExecutor();  //start the rebalance executor again after rebalancing
@@ -224,27 +212,6 @@ public class Controller {
     }
     return null;
   }
-
-
-/*  //print information about the dstoreInfos
-  public void printDstoreInfos(){
-    for(DstoreInfo dstoreInfo : dstoreInfos){
-      if (dstoreInfo.getDstoreSocket().isConnected())
-      {
-        System.out.println("DstoreInfo: " + dstoreInfo + ",talking to controller on port:  " + dstoreInfo.getDstorePortWithController() + ", socket: " + dstoreInfo.getDstoreSocket() + ", client should use port " + dstoreInfo.getDstorePortForClient());
-      }
-    }
-  }
-
-  public void printClientInfos(){
-    for(ClientInfo clientInfo : clientInfos){
-      if (clientInfo.getClientSocket().isConnected())
-      {
-        System.out.println("ClientInfo: " + clientInfo + ",talking to controller on port:  " + clientInfo.getClientPortWithController() + ", socket: " + clientInfo.getClientSocket());
-      }
-    }
-  }
-  */
 
   public void loadOperation(String fileName,ClientInfo clientInfo) {
 
@@ -355,6 +322,7 @@ public class Controller {
       outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
       outClient.flush();
       logger.info(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN + " " + "Not enough Dstores to store the file");
+      decrementOperationsInProgress();
       return;
     }
 
@@ -363,6 +331,7 @@ public class Controller {
       outClient.println(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
       outClient.flush();
       logger.info(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN + " " + "File already exists in the index");
+      decrementOperationsInProgress();
       return;
     }
 
@@ -458,91 +427,6 @@ public class Controller {
 
 
 
-  /*  remove operation without timeouts
-  public void removeOperation(String fileName, ClientInfo clientInfo){
-
-    PrintWriter outClient = clientInfo.getOutClientPrintWriter();
-
-    //failure handling if the file does not exist in the index
-    if (!index.containsKey(fileName)){
-      outClient.println(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
-      outClient.flush();
-      logger.info(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + "File does not exist in the index");
-      return;
-    }
-
-    //failure handling if the number of Dstores is less than R
-    if (dstoreInfos.size() < R){
-      outClient.println(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
-      outClient.flush();
-      logger.info(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN + " " + "Not enough Dstores to store the file");
-      return;
-    }
-
-    //update the index to "remove in progress"
-    index.get(fileName).setFileStatus("remove in progress");
-
-
-
-
-    //get the dstores which have this file
-    ArrayList<Integer> dstorePorts = index.get(fileName).getDStoresPorts();
-
-    //Countdownlatch which will only send the REMOVE_COMPLETE message to the client when all R dstores have sent an ACK
-    CountDownLatch latch = new CountDownLatch(dstorePorts.size());
-
-    //send each of the R dstores the remove message
-    for (int dstorePort : dstorePorts){
-      DstoreInfo dstoreInfo = getSpecificDstoreInfo("Dstore"+String.valueOf(dstorePort));
-      PrintWriter outDstore = dstoreInfo.getOutDstorePrintWriter();
-      outDstore.println(Protocol.REMOVE_TOKEN + " " + fileName);
-      outDstore.flush();
-      logger.info("Message sent to dstore: " + Protocol.REMOVE_TOKEN + " " + fileName);
-    }
-
-    //wait for a REMOVE_ACK filename from each of the R dstores. When all ACKs are received, the REMOVE_COMPLETE message is sent to the client
-    for (int dstorePort : dstorePorts) {
-      DstoreInfo dstoreInfo = getSpecificDstoreInfo("Dstore"+String.valueOf(dstorePort));
-      logger.info("got a dstoreinfo object");
-      new Thread(() -> {
-        try {
-          String message = dstoreInfo.getInDstoreBufferedReader().readLine();
-          if (message.equals(Protocol.REMOVE_ACK_TOKEN + " " + fileName)) {
-            dstoreInfo.removeFileNameFromStoredFiles(fileName);  //removing from the dstoreinfo object the name of the file that it has just removed
-            //index.get(fileName).removeDStorePort(dstorePort); //this causes concurrent modification exception !! :(
-            logger.info("Message received from dstore: " + message);
-            latch.countDown();
-          }
-        } catch (SocketException e) {
-          logger.info("Dstore connection reset: " + e);
-          removeDstoreInfo(dstoreInfo); //removing this dstore from the list of dstores as it has disconnected
-          //latch.countDown(); // To avoid being stuck in latch.await() if a dstore disconnects
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-      }).start();
-    }
-
-    try {
-      latch.await();
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-    }
-    logger.info("All ACKs received from dstores for REMOVE operation");
-
-    //they are removed from the index only after all ACK's have been received
-    //so even if some did succeed and some did not, the ports will be removed from the index only if all ACK's have been received
-    index.get(fileName).removeAllDStoresPorts();
-
-    index.get(fileName).setFileStatus("remove complete");
-    index.remove(fileName); //removing the file from the index as it has been removed from all dstores that had it
-    outClient.println(Protocol.REMOVE_COMPLETE_TOKEN);
-    outClient.flush();
-    logger.info("Message sent to client: " + Protocol.REMOVE_COMPLETE_TOKEN);
-    printAllInformationAboutIndex();
-
-  }
-*/
 
   public void removeOperation(String fileName, ClientInfo clientInfo) {
 
@@ -556,6 +440,7 @@ public class Controller {
       outClient.flush();
       logger.info(
           Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + "File does not exist in the index");
+      decrementOperationsInProgress();
       return;
     }
 
@@ -565,6 +450,7 @@ public class Controller {
       outClient.flush();
       logger.info(
           Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN + " " + "Not enough Dstores to store the file");
+      decrementOperationsInProgress();
       return;
     }
 
@@ -972,6 +858,11 @@ public class Controller {
                         }
                     }
                 }
+
+              if (numberOfFilesToAdd <= 0) {
+                break; // exit while loop if there are no more files to move
+              }
+
             }
 
           if (numberOfFilesToAdd <= 0) {
@@ -1133,18 +1024,7 @@ public class Controller {
 
 
   }
-/*
-  public void rebalance(){
 
-    dstoreListOPeration();  //reviseAllocation and constructRebalanceMessages are called in here and it now sends them too
-    //sendRebalanceMessages();
-
-    //need to sync the index with what the dstores now have
-    syncIndexWithDstoreInfos();
-    printAllInformationAboutIndex();
-
-
-  }*/
 
  //rebalance with timeout
  public void rebalance(){
@@ -1157,6 +1037,12 @@ public class Controller {
        // Ignore interrupts
      }
    }
+
+   //if number of dstores is 0 then don't rebalance
+    if (dstoreInfos.size() == 0){
+      logger.info("No dstores to rebalance");
+      return;
+    }
 
 
    rebalanceInProgress.set(true);
@@ -1203,17 +1089,6 @@ public class Controller {
 
 
   }
-
-
-
-
-
-
-
-
-
-
-
 
 
 

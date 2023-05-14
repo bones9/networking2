@@ -157,7 +157,7 @@ public class ClientMain {
 //
 	//								try { client.store(fileList[2]); } catch(IOException e) { e.printStackTrace(); }
 //
-								try { client.store(fileList[3]); } catch(IOException e) { e.printStackTrace(); }
+		//						try { client.store(fileList[3]); } catch(IOException e) { e.printStackTrace(); }
 
 			//sleep for 100 seconds
 		//	try {
@@ -179,6 +179,14 @@ public class ClientMain {
 	//		try { client.remove("bbb.txt"); } catch(IOException e) { e.printStackTrace(); }
 
 		try { client.list(); } catch(IOException e) { e.printStackTrace(); }
+
+
+/*			//sleep for 100 seconds
+			try {
+				Thread.sleep(100000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}*/
 
 
 		} finally {
